@@ -1,0 +1,130 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  PASSENGER
+  DRIVER
+  ADMIN
+}
+
+enum RideStatus {
+  REQUESTED
+  PENDING
+  ACCEPTED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  clerkId   String   @unique
+  email     String   @unique
+  fullName  String?
+  phone     String?
+  role      Role     @default(PASSENGER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rides        Ride[]        @relation("PassengerRides")
+  deviceTokens DeviceToken[]
+  driverProfile Driver?      @relation("DriverUser")
+}
+
+model Driver {
+  id              Int      @id @default(autoincrement())
+  userId          String   @unique
+  firstName       String
+  lastName        String
+  profileImageUrl String?
+  carImageUrl     String?
+  carSeats        Int      @default(4)
+  rating          Float    @default(5.0)
+  isOnline        Boolean  @default(false)
+  currentLat      Float?
+  currentLng      Float?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user  User  @relation("DriverUser", fields: [userId], references: [id])
+  rides Ride[] @relation("DriverRides")
+}
+
+model Ride {
+  id                  String     @id @default(cuid())
+  passengerId         String
+  driverId            Int?
+  originAddress       String
+  originLat           Float
+  originLng           Float
+  destinationAddress  String
+  destinationLat      Float
+  destinationLng      Float
+  requestedSeats      Int        @default(1)
+  fareCents           Int
+  currency            String     @default("usd")
+  status              RideStatus @default(REQUESTED)
+  metadata            Json?
+  rideTimeMinutes     Int?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  passenger User     @relation("PassengerRides", fields: [passengerId], references: [id])
+  driver    Driver?  @relation("DriverRides", fields: [driverId], references: [id])
+  payment   Payment?
+  rating    Rating?
+
+  @@index([passengerId])
+  @@index([driverId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Payment {
+  id                    String        @id @default(cuid())
+  rideId                String        @unique
+  stripePaymentIntentId String        @unique
+  amountCents           Int
+  currency              String        @default("usd")
+  status                PaymentStatus @default(PENDING)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  ride Ride @relation(fields: [rideId], references: [id])
+}
+
+model DeviceToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  platform  String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Rating {
+  id              String   @id @default(cuid())
+  rideId          String   @unique
+  passengerRating Int?
+  driverRating    Int?
+  comment         String?
+  createdAt       DateTime @default(now())
+
+  ride Ride @relation(fields: [rideId], references: [id])
+}
