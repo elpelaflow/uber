@@ -1,0 +1,18 @@
+# PostgreSQL + app stack for local development
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: uber-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: uber
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
