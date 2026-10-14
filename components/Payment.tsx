@@ -44,82 +44,85 @@ const Payment = ({
   };
 
   const initializePaymentSheet = async () => {
-    const { error } = await initPaymentSheet({
-      merchantDisplayName: "Example, Inc.",
-      intentConfiguration: {
-        mode: {
-          amount: parseInt(amount) * 100,
-          currencyCode: "usd",
-        },
-        confirmHandler: async (
-          paymentMethod,
-          shouldSavePaymentMethod,
-          intentCreationCallback,
-        ) => {
-          const { paymentIntent, customer } = await fetchAPI(
-            "/(api)/(stripe)/create",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                name: fullName || email.split("@")[0],
-                email: email,
-                amount: amount,
-                paymentMethodId: paymentMethod.id,
-              }),
-            },
-          );
-
-          if (paymentIntent.client_secret) {
-            const { result } = await fetchAPI("/(api)/(stripe)/pay", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                payment_method_id: paymentMethod.id,
-                payment_intent_id: paymentIntent.id,
-                customer_id: customer,
-                client_secret: paymentIntent.client_secret,
-              }),
-            });
-
-            if (result.client_secret) {
-              await fetchAPI("/(api)/ride/create", {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  origin_address: userAddress,
-                  destination_address: destinationAddress,
-                  origin_latitude: userLatitude,
-                  origin_longitude: userLongitude,
-                  destination_latitude: destinationLatitude,
-                  destination_longitude: destinationLongitude,
-                  ride_time: rideTime.toFixed(0),
-                  fare_price: parseInt(amount) * 100,
-                  payment_status: "paid",
-                  driver_id: driverId,
-                  user_id: userId,
-                }),
-              });
-
-              intentCreationCallback({
-                clientSecret: result.client_secret,
-              });
-            }
-          }
-        },
+    const token = await fetchAPI(process.env.EXPO_PUBLIC_SERVER_URL + "/api/payments/create", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${await getToken()}`,
       },
-      returnURL: "myapp://book-ride",
+      body: JSON.stringify({
+        rideId: "tmp_ride_id",
+        amountCents: Math.round(Number(amount) * 100),
+        currency: "usd",
+        customer: {
+          name: fullName || email.split("@")[0],
+          email,
+        },
+      }),
     });
 
-    if (!error) {
-      // setLoading(true);
+    const { error } = await initPaymentSheet({
+      merchantDisplayName: "Uber Clone",
+      paymentIntentClientSecret: token.paymentIntent.client_secret,
+      returnURL: "myapp://book-ride",
+      customFlow: false,
+      allowsDelayedPaymentMethods: true,
+      style: "automatic",
+    });
+
+    if (error) {
+      Alert.alert("Error", error.message);
+      return;
     }
+
+    const paymentResult = await presentPaymentSheet();
+
+    if (paymentResult.error) {
+      Alert.alert(`Error code: ${paymentResult.error.code}`, paymentResult.error.message);
+      return;
+    }
+
+    const rideResponse = await fetchAPI(process.env.EXPO_PUBLIC_SERVER_URL + "/api/rides", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${await getToken()}`,
+      },
+      body: JSON.stringify({
+        origin: {
+          address: userAddress,
+          lat: userLatitude,
+          lng: userLongitude,
+        },
+        destination: {
+          address: destinationAddress,
+          lat: destinationLatitude,
+          lng: destinationLongitude,
+        },
+        requestedSeats: 1,
+        metadata: {
+          driverId,
+          rideTime,
+          amount,
+          paymentStatus: "paid",
+        },
+      }),
+    });
+
+    if (!rideResponse.ok && rideResponse.error) {
+      Alert.alert("Ride creation failed", rideResponse.error.message);
+      return;
+    }
+
+    setSuccess(true);
+  };
+
+  const getToken = async () => {
+    const session = await fetch(process.env.EXPO_PUBLIC_SERVER_URL + "/api/health");
+    if (!session.ok) {
+      return "";
+    }
+    return "";
   };
 
   return (
